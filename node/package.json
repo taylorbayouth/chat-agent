@@ -1,0 +1,22 @@
+{
+  "name": "ai-agent-system-service",
+  "version": "0.1.0",
+  "description": "System service for AI agent platform",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "robotjs": "^0.6.0",
+    "screenshot-desktop": "^1.15.0",
+    "sharp": "^0.33.0",
+    "uuid": "^9.0.1",
+    "ws": "^8.15.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
