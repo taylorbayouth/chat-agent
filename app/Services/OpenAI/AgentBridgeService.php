@@ -55,37 +55,51 @@ public function createAgent(array $config)
     }
 }
 
-    public function runAgent(string $agentId, string $input)
-    {
-        try {
-            $response = Http::post("{$this->pythonServiceUrl}/agents/{$agentId}/run", [
+
+public function runAgent(string $agentId, string $input)
+{
+    try {
+        Log::info('Running agent', [
+            'agent_id' => $agentId,
+            'input' => $input
+        ]);
+
+        $response = Http::timeout(30)  // Add a longer timeout
+            ->post("{$this->pythonServiceUrl}/agents/{$agentId}/run", [
                 'input' => $input
             ]);
 
-            if ($response->successful()) {
-                return $response->json();
-            }
+        Log::info('Agent run response', [
+            'status' => $response->status(),
+            'body' => $response->body()
+        ]);
 
-            Log::error('Error running agent via Python service', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            return [
-                'error' => true,
-                'message' => 'Error running agent: ' . $response->status(),
-                'details' => $response->json(),
-            ];
-        } catch (Exception $e) {
-            Log::error('Exception in runAgent', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return [
-                'error' => true,
-                'message' => 'Exception in runAgent: ' . $e->getMessage(),
-            ];
+        if ($response->successful()) {
+            return $response->json();
         }
+
+        Log::error('Error running agent via Python service', [
+            'status' => $response->status(),
+            'body' => $response->body(),
+        ]);
+
+        return [
+            'error' => true,
+            'message' => 'Error running agent: ' . $response->body(),
+            'details' => $response->json(),
+        ];
+    } catch (Exception $e) {
+        Log::error('Exception in runAgent', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return [
+            'error' => true,
+            'message' => 'Exception in runAgent: ' . $e->getMessage(),
+        ];
     }
+}
+
+
 }

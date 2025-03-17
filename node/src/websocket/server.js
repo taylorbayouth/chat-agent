@@ -1,111 +1,84 @@
-// Modify src/websocket/server.js to add better handling
 const WebSocket = require('ws');
 const http = require('http');
-const express = require('express');
-const { takeScreenshot } = require('../system/screenshot');
 
 function startWebSocketServer(port = 3001) {
-  return new Promise((resolve) => {
-    const app = express();
-    const server = http.createServer(app);
+  // Create an HTTP server
+  const server = http.createServer();
+  
+  // Create WebSocket server attached to the HTTP server
+  const wss = new WebSocket.Server({ server });
+
+  // Connection event handler
+  wss.on('connection', (ws) => {
+    console.log('New WebSocket client connected');
     
-    // Add a test endpoint
-    app.get('/test-screenshot', async (req, res) => {
+    // Message event handler
+    ws.on('message', async (rawMessage) => {
       try {
-        console.log('Test screenshot endpoint called');
-        const result = await takeScreenshot();
-        res.send(`
-          <html>
-            <body>
-              <h1>Screenshot Test</h1>
-              <p>Screenshot size: ${result.image.length} characters</p>
-              <img src="data:image/webp;base64,${result.image}" style="max-width: 100%">
-            </body>
-          </html>
-        `);
-      } catch (err) {
-        res.status(500).send(`Error: ${err.message}`);
+        // Parse the incoming message
+        const message = JSON.parse(rawMessage.toString());
+        console.log('Received message:', message);
+        
+        // Handle the command
+        const response = await handleCommand(message);
+        
+        // Send response back to client
+        ws.send(JSON.stringify(response));
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+        ws.send(JSON.stringify({ 
+          error: true, 
+          message: error.message 
+        }));
       }
     });
-    
-    const wss = new WebSocket.Server({ 
-      server,
-      maxPayload: 100 * 1024 * 1024
+
+    // Error event handler
+    ws.on('error', (error) => {
+      console.error('WebSocket client error:', error);
     });
-    
-    wss.on('connection', (ws) => {
-      console.log('Client connected');
-      
-      ws.on('message', async (message) => {
-        console.log(`Received message of length: ${message.length}`);
-        
-        try {
-          const data = JSON.parse(message.toString());
-          console.log(`Processing command: ${data.command} (ID: ${data.command_id})`);
-          
-          if (data.command === 'screenshot') {
-            // Add timeout protection for the whole screenshot process
-            const timeoutPromise = new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Screenshot operation timed out')), 25000);
-            });
-            
-            try {
-              // Race the screenshot process against timeout
-              const result = await Promise.race([
-                takeScreenshot(data.params || {}),
-                timeoutPromise
-              ]);
-              
-              result.command_id = data.command_id;
-              console.log(`Screenshot completed for ID: ${data.command_id}, success: ${result.success}`);
-              
-              if (result.success) {
-                console.log(`Sending screenshot response (${result.image.length} chars)`);
-              } else {
-                console.log(`Sending error response: ${result.error}`);
-              }
-              
-              ws.send(JSON.stringify(result));
-            } catch (error) {
-              console.error('Screenshot processing error:', error);
-              ws.send(JSON.stringify({
-                success: false,
-                command_id: data.command_id,
-                error: `Screenshot failed: ${error.message}`
-              }));
-            }
-          } else {
-            // Handle other commands
-            ws.send(JSON.stringify({
-              success: true,
-              command_id: data.command_id,
-              message: `Command ${data.command} processed`
-            }));
-          }
-        } catch (error) {
-          console.error('Error processing message:', error);
-          try {
-            ws.send(JSON.stringify({
-              success: false,
-              error: error.message
-            }));
-          } catch (sendError) {
-            console.error('Error sending error response:', sendError);
-          }
-        }
-      });
-    });
-    
-    server.listen(port, () => {
-      console.log(`WebSocket server running on port ${port}`);
-      resolve(wss);
-    });
-    
-    // Log any WebSocket server errors
-    wss.on('error', (error) => {
-      console.error('WebSocket server error:', error);
+
+    // Close event handler
+    ws.on('close', () => {
+      console.log('WebSocket client disconnected');
     });
   });
+
+  // Server error handling
+  server.on('error', (error) => {
+    console.error('HTTP server error:', error);
+  });
+
+  // Start the server
+  server.listen(port, () => {
+    console.log(`WebSocket server running on port ${port}`);
+  });
+
+  return wss;
+}
+
+// Command handling function
+async function handleCommand(data) {
+  console.log('Handling command:', data);
+
+  try {
+    switch (data.command) {
+      case 'screenshot':
+        return await require('../system/screenshot').takeScreenshot(data.params || {});
+      case 'click':
+        return await require('../system/mouse').click(data.params || {});
+      case 'type':
+        return await require('../system/keyboard').typeText(data.params || {});
+      default:
+        throw new Error(`Unknown command: ${data.command}`);
+    }
+  } catch (error) {
+    console.error(`Error in handleCommand for ${data.command}:`, error);
+    return {
+      error: true,
+      message: error.message
+    };
+  }
 }
 
 module.exports = { startWebSocketServer };
